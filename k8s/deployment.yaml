@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mi-micro
+  labels:
+    app: mi-micro
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mi-micro
+  template:
+    metadata:
+      labels:
+        app: mi-micro
+    spec:
+      containers:
+        - name: mi-micro
+          image: mi-micro:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVICE_NAME
+              value: "mi-micro"
+            - name: ENV
+              value: "k8s-local"
