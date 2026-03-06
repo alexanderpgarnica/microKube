@@ -1,0 +1,70 @@
+name: CI - Build & Push Image + Bump Helm Values
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/microkube
+
+jobs:
+  build_push_and_bump:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag (short SHA)
+        id: vars
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "tag=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Install PyYAML
+        run: pip3 install pyyaml
+
+      - name: Update Helm values.yaml image tag
+        run: |
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          values_path = Path("helm/mi-micro/values.yaml")
+          data = yaml.safe_load(values_path.read_text())
+
+          data["image"]["repository"] = "${{ env.IMAGE_NAME }}"
+          data["image"]["tag"] = "${{ steps.vars.outputs.tag }}"
+          data["image"]["pullPolicy"] = "Always"
+
+          values_path.write_text(yaml.safe_dump(data, sort_keys=False))
+          print("Updated", values_path)
+          PY
+
+      - name: Commit and push Helm values bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add helm/mi-micro/values.yaml
+          git commit -m "ci: bump image tag to ${{ steps.vars.outputs.tag }}" || echo "No changes to commit"
+          git push
